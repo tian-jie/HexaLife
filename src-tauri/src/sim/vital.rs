@@ -1,54 +1,41 @@
-use crate::world::{STATE_HEALTHY, World};
-use rand::rngs::StdRng;
-use rand::Rng;
+use crate::rng::{WyRng, PHASE_BIRTH, PHASE_NATURAL_DEATH};
+use crate::world::{STATE_DEAD, World};
+use rayon::prelude::*;
 
-pub fn natural_death(world: &mut World, rng: &mut StdRng) {
+pub fn decide_natural_deaths(world: &World, day: u32, n: usize) -> Vec<bool> {
     let rate = world.cfg.natural_death_rate_per_day;
     if rate <= 0.0 {
-        return;
+        return vec![false; n];
     }
-    let n = world.day_sorted.len();
-    for i in 0..n {
-        let id = world.day_sorted[i];
-        if !world.is_alive(id) {
-            continue;
-        }
-        if rng.gen::<f64>() < rate {
-            world.kill_person(id);
-            world.stats.new_natural_deaths += 1;
-            world.total_natural_deaths += 1;
-        }
-    }
+    let seed = world.cfg.seed;
+    (0..n)
+        .into_par_iter()
+        .map(|id| {
+            let id = id as u32;
+            if world.people[id as usize].state == STATE_DEAD {
+                return false;
+            }
+            let mut rng = WyRng::from_phase(seed, day, id, PHASE_NATURAL_DEATH);
+            rng.next_f64() < rate
+        })
+        .collect()
 }
 
-pub fn births(world: &mut World, rng: &mut StdRng) {
+pub fn decide_births(world: &World, day: u32, n: usize) -> Vec<bool> {
     let rate = world.cfg.birth_rate_per_day;
     if rate <= 0.0 {
-        return;
+        return vec![false; n];
     }
-    let n = world.day_sorted.len();
-    for i in 0..n {
-        let id = world.day_sorted[i];
-        if !world.is_alive(id) {
-            continue;
-        }
-        if rng.gen::<f64>() < rate {
-            let cell = world.people[id as usize].cell;
-            let new_id = world.people.len() as u32;
-            world.people.push(crate::world::Person {
-                cell,
-                home: cell,
-                next_in_cell: crate::world::hex::LINK_NONE,
-                prev_in_cell: crate::world::hex::LINK_NONE,
-                infected_on: 0,
-                immune_until_day: 0,
-                state: STATE_HEALTHY,
-                generation: 0,
-            });
-            world.insert_into_cell(new_id);
-            world.alive_slot_insert(new_id);
-            world.stats.new_births += 1;
-            world.total_births += 1;
-        }
-    }
+    let seed = world.cfg.seed;
+    (0..n)
+        .into_par_iter()
+        .map(|id| {
+            let id = id as u32;
+            if world.people[id as usize].state == STATE_DEAD {
+                return false;
+            }
+            let mut rng = WyRng::from_phase(seed, day, id, PHASE_BIRTH);
+            rng.next_f64() < rate
+        })
+        .collect()
 }

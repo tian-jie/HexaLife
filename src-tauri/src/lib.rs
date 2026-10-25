@@ -1,4 +1,5 @@
 pub mod config;
+pub mod rng;
 pub mod ipc;
 pub mod sim;
 mod state;
