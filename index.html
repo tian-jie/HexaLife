@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Virus Spreading Simulator — 病原世界</title>
+  </head>
+  <body>
+    <header>
+      <h1>Virus Spreading Simulator — 病原世界</h1>
+    </header>
+    <main>
+      <section class="map-panel">
+        <canvas id="map"></canvas>
+        <p id="hover-tip" class="hover-tip"></p>
+      </section>
+      <aside class="side">
+        <div class="controls">
+          <button id="btn-start" type="button">开始</button>
+          <button id="btn-pause" type="button">暂停</button>
+          <button id="btn-resume" type="button">继续</button>
+          <button id="btn-reset" type="button">重置</button>
+          <label>
+            速度 (天/秒)
+            <input id="speed" type="range" min="1" max="60" value="10" />
+          </label>
+        </div>
+        <p id="error" class="error"></p>
+        <pre id="stats"></pre>
+        <div id="legend" class="legend"></div>
+      </aside>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,26 @@
+# 规格默认规模：10000×10000、1 亿人口（需大内存，慎用）
+[map]
+width = 10000
+height = 10000
+
+[sim]
+max_days = 10000
+
+[initial]
+seed = 1
+initial_population = 100_000_000
+initial_infected_count = 1
+initial_infection_mode = "random"
+initial_infection_cell = 0
+
+[density]
+lambda_bg = 0.2
+truncation = 4.0
+centers = [
+  { cell = 25000000, peak = 4.0, sigma = 20.0 },
+  { cell = 75000000, peak = 4.0, sigma = 20.0 },
+  { cell = 50005000, peak = 4.0, sigma = 20.0 },
+  { cell = 25005000, peak = 4.0, sigma = 20.0 },
+  { cell = 75005000, peak = 4.0, sigma = 20.0 },
+  { cell = 50000000, peak = 4.0, sigma = 20.0 },
+]

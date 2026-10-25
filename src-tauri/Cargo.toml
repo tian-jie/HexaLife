@@ -1,0 +1,33 @@
+[package]
+name = "hexalife"
+version = "0.1.0"
+description = "Virus Spreading Simulator / 病原世界"
+authors = ["you"]
+edition = "2021"
+
+[lib]
+name = "hexalife_lib"
+# 桌面端仅需 rlib；避免 dev 下 staticlib/cdylib 与 bin 链接时出现 LLVM 符号缺失
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+rand = "0.8"
+crossbeam-channel = "0.5"
+
+# 仅 rlib 时可与 bin 同档优化，dev 模拟会快很多（不再触发之前的链接错误）
+[profile.dev]
+opt-level = 2
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true
