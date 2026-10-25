@@ -1,0 +1,13 @@
+# 病毒：新冠近似。发病 8 天，四代相同，病死率 0.8%，免疫 150 天。
+# 初始感染使用环境文件里的 initial_infection_cell，模式改为一格。
+
+[initial]
+initial_infected_count = 1
+initial_infection_mode = "cell"
+
+[disease]
+incubation_days = 8
+immune_days = 150
+infection_rate = [0.15, 0.15, 0.15, 0.15]
+lethality_rate = [0.008, 0.008, 0.008, 0.008]
+infected_can_move = true

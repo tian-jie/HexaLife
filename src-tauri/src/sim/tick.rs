@@ -3,7 +3,6 @@ use crate::sim::movement::try_move_person;
 use crate::sim::vital::{births, natural_death};
 use crate::world::{STATE_HEALTHY, World};
 use rand::rngs::StdRng;
-use std::collections::HashSet;
 
 pub fn tick_day(world: &mut World, rng: &mut StdRng) {
     let day = world.day + 1;
@@ -12,39 +11,42 @@ pub fn tick_day(world: &mut World, rng: &mut StdRng) {
     world.stats.day = day;
 
     if day < world.immune_expiring.len() as u32 {
-        let expiring = world.immune_expiring[day as usize].clone();
+        let expiring = std::mem::take(&mut world.immune_expiring[day as usize]);
         for id in expiring {
             if world.people[id as usize].state == crate::world::STATE_IMMUNE {
                 let cell = world.people[id as usize].cell;
-                world.adjust_tile(cell, crate::world::STATE_IMMUNE, -1);
+                world.adjust_pop(cell, crate::world::STATE_IMMUNE, -1);
                 world.people[id as usize].state = STATE_HEALTHY;
-                world.adjust_tile(cell, STATE_HEALTHY, 1);
+                world.adjust_pop(cell, STATE_HEALTHY, 1);
             }
         }
-        world.immune_expiring[day as usize].clear();
     }
 
-    let alive_start = world.sorted_alive_snapshot();
-    let mut alive: HashSet<u32> = alive_start.iter().copied().collect();
+    world.day_sorted.clear();
+    world.day_sorted.extend_from_slice(&world.alive);
+    world.day_sorted.sort_unstable();
 
-    let active_infected: Vec<u32> = alive_start
+    let active_infected: Vec<u32> = world
+        .day_sorted
         .iter()
-        .filter(|id| world.is_contagious_at_day_start(**id, day))
+        .filter(|&id| world.is_contagious_at_day_start(*id, day))
         .copied()
         .collect();
 
-    for id in &alive_start {
-        if let Some(dest) = try_move_person(world, *id, day, rng) {
-            world.move_person(*id, dest);
+    let n_alive = world.day_sorted.len();
+    for i in 0..n_alive {
+        let id = world.day_sorted[i];
+        if let Some(dest) = try_move_person(world, id, day, rng) {
+            world.move_person(id, dest);
         }
     }
 
     spread(world, day, &active_infected, rng);
 
-    natural_death(world, rng, &alive_start, &mut alive);
-    virus_death_and_recovery(world, day, &active_infected, &mut alive, rng);
+    natural_death(world, rng);
+    virus_death_and_recovery(world, day, &active_infected, rng);
 
-    births(world, rng, &alive_start, &mut alive);
+    births(world, rng);
 
     world.refresh_aggregate_stats();
 }

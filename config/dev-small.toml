@@ -1,3 +1,5 @@
+# 已拆到 config/env/dev-small.toml。本文件仍可作为 HEXALIFE_ENV 使用。
+
 [map]
 width = 200
 height = 200
@@ -7,7 +9,7 @@ max_days = 500
 
 [initial]
 seed = 1
-initial_population = 5000
+initial_population = 50000
 initial_infected_count = 3
 
 [density]

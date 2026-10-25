@@ -1,0 +1,31 @@
+# 环境：10000×10000，1 亿人。内存占用大，慎用。
+
+[map]
+width = 10000
+height = 10000
+
+[sim]
+max_days = 10000
+
+[initial]
+seed = 1
+initial_population = 100_000_000
+initial_infected_count = 1
+initial_infection_mode = "random"
+initial_infection_cell = 50005000
+
+[density]
+lambda_bg = 0.2
+truncation = 4.0
+centers = [
+  { cell = 25002500, peak = 4.0, sigma = 20.0 },
+  { cell = 25007500, peak = 4.0, sigma = 20.0 },
+  { cell = 50005000, peak = 4.0, sigma = 20.0 },
+  { cell = 75002500, peak = 4.0, sigma = 20.0 },
+  { cell = 75007500, peak = 4.0, sigma = 20.0 },
+  { cell = 20005000, peak = 4.0, sigma = 20.0 },
+]
+
+[vital]
+birth_rate_per_day = 0.0001
+natural_death_rate_per_day = 0.00005

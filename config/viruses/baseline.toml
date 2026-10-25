@@ -1,0 +1,9 @@
+# 病毒：当前默认参数。四代感染率递减，致死率也递减。
+# 不改初始暴发位置，沿用环境文件。
+
+[disease]
+incubation_days = 7
+immune_days = 180
+infection_rate = [0.70, 0.55, 0.45, 0.25]
+lethality_rate = [0.40, 0.30, 0.20, 0.05]
+infected_can_move = true

@@ -1,0 +1,13 @@
+# 病毒：腺鼠疫 / 黑死病近似。人传人弱，致死率 50%，康复后本次模拟内不再感染。
+# 从环境文件指定的城市格子开始。
+
+[initial]
+initial_infected_count = 1
+initial_infection_mode = "cell"
+
+[disease]
+incubation_days = 6
+immune_days = 10000
+infection_rate = [0.08, 0.08, 0.08, 0.08]
+lethality_rate = [0.50, 0.50, 0.50, 0.50]
+infected_can_move = true

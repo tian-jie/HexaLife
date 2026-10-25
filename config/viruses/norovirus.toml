@@ -1,0 +1,13 @@
+# 病毒：诺如。发病 2 天，接触传播强，致死率极低，发病者不移动。
+# 随机选 8 个有人的格子同时出现。
+
+[initial]
+initial_infected_count = 8
+initial_infection_mode = "random"
+
+[disease]
+incubation_days = 2
+immune_days = 120
+infection_rate = [0.35, 0.35, 0.35, 0.35]
+lethality_rate = [0.0005, 0.0005, 0.0005, 0.0005]
+infected_can_move = false
