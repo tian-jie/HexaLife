@@ -28,7 +28,6 @@ pub enum Control {
 
 struct Session {
     world: World,
-    rng: StdRng,
 }
 
 pub struct SharedSim {
@@ -182,7 +181,7 @@ fn try_build_session() -> Result<Session, String> {
     let cfg = SimConfig::load_layered(&sources.env_file, &sources.virus_file)?;
     let mut rng = StdRng::seed_from_u64(cfg.seed);
     let world = World::new(cfg, &mut rng)?;
-    Ok(Session { world, rng })
+    Ok(Session { world })
 }
 
 fn set_status(stats_out: &Arc<Mutex<DayStats>>, run_state: &str, error: Option<String>) {
@@ -241,7 +240,7 @@ fn sim_loop(
 
         let started = Instant::now();
         if let Some(sess) = &mut session {
-            tick_day(&mut sess.world, &mut sess.rng);
+            tick_day(&mut sess.world);
             if sess.world.day >= sess.world.cfg.max_days {
                 running = false;
                 push_frame(sess, &stats_out, &view_out, &camera, "paused", None);

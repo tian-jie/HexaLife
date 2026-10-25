@@ -10,7 +10,7 @@ use crate::world::populate::PopulationPlanner;
 use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
 use rand::Rng;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 pub const TILE_SIZE: u32 = 100;
 
 pub const STATE_HEALTHY: u8 = 0;
@@ -28,6 +28,7 @@ pub struct Person {
     pub immune_until_day: u32,
     pub state: u8,
     pub generation: u8,
+    pub alive_index: u32,
 }
 
 #[derive(Clone)]
@@ -49,8 +50,7 @@ pub struct World {
     pub day: u32,
     pub people: Vec<Person>,
     pub alive: Vec<u32>,
-    /// id -> index in `alive` for O(1) removal
-    alive_slot: HashMap<u32, usize>,
+    pub infected_by_gen: [u64; 4],
     pub cell_head: Vec<u32>,
     pub cell_pop: Vec<CellPop>,
     pub tiles: Vec<TileCounts>,
@@ -64,7 +64,6 @@ pub struct World {
     pub total_natural_deaths: u64,
     pub total_births: u64,
     pub move_tables: MoveTables,
-    pub day_sorted: Vec<u32>,
 }
 
 impl World {
@@ -79,7 +78,7 @@ impl World {
             day: 0,
             people: Vec::new(),
             alive: Vec::new(),
-            alive_slot: HashMap::new(),
+            infected_by_gen: [0; 4],
             cell_head: vec![LINK_NONE; cell_count as usize],
             cell_pop: vec![CellPop::default(); cell_count as usize],
             tiles: vec![
@@ -100,7 +99,6 @@ impl World {
             total_natural_deaths: 0,
             total_births: 0,
             move_tables,
-            day_sorted: Vec::new(),
         };
         world.populate(rng)?;
         world.place_initial_infections(rng)?;
@@ -124,12 +122,12 @@ impl World {
                 immune_until_day: 0,
                 state: STATE_HEALTHY,
                 generation: 0,
+                alive_index: 0,
             };
             self.people.push(person);
             self.insert_into_cell(id as u32);
             let uid = id as u32;
-            self.alive_slot.insert(uid, self.alive.len());
-            self.alive.push(uid);
+            self.push_alive(uid);
         }
         if self.alive.len() as u64 != self.cfg.initial_population {
             return Err("初始人口数量不匹配".into());
@@ -184,13 +182,7 @@ impl World {
     }
 
     fn count_infected(&self) -> u32 {
-        let mut n = 0u32;
-        for &id in &self.alive {
-            if self.people[id as usize].state == STATE_INFECTED {
-                n += 1;
-            }
-        }
-        n
+        self.infected_by_gen.iter().sum::<u64>() as u32
     }
 
     fn occupied_cells(&self) -> Vec<u32> {
@@ -198,7 +190,9 @@ impl World {
         for id in &self.alive {
             set.insert(self.people[*id as usize].cell);
         }
-        set.into_iter().collect()
+        let mut cells: Vec<u32> = set.into_iter().collect();
+        cells.sort_unstable();
+        cells
     }
 
     /// 在指定格内，每名健康者以 0 代总感染率 P_g 独立判定是否成为第 0 天感染者。
@@ -236,6 +230,8 @@ impl World {
         p.infected_on = 0;
         p.generation = 0;
         self.adjust_pop(cell, STATE_INFECTED, 1);
+        let g = generation_index(self.people[id as usize].generation);
+        self.infected_by_gen[g] += 1;
     }
 
     pub fn infect_new(&mut self, id: u32, day: u32, parent_gen: u8) {
@@ -249,6 +245,8 @@ impl World {
         p.infected_on = day;
         p.generation = generation;
         self.adjust_pop(cell, STATE_INFECTED, 1);
+        let g = generation_index(self.people[id as usize].generation);
+        self.infected_by_gen[g] += 1;
         self.stats.new_infections += 1;
     }
 
@@ -296,7 +294,15 @@ impl World {
     }
 
     pub fn is_alive(&self, id: u32) -> bool {
-        self.alive_slot.contains_key(&id)
+        self.people
+            .get(id as usize)
+            .is_some_and(|p| p.state != STATE_DEAD)
+    }
+
+    pub(crate) fn push_alive(&mut self, id: u32) {
+        let idx = self.alive.len() as u32;
+        self.people[id as usize].alive_index = idx;
+        self.alive.push(id);
     }
 
     pub fn move_person(&mut self, id: u32, new_cell: u32) {
@@ -308,17 +314,21 @@ impl World {
     }
 
     pub fn kill_person(&mut self, id: u32) {
+        let state = self.people[id as usize].state;
+        if state == STATE_INFECTED {
+            let g = generation_index(self.people[id as usize].generation);
+            self.infected_by_gen[g] = self.infected_by_gen[g].saturating_sub(1);
+        }
         self.remove_from_cell(id);
         self.people[id as usize].state = STATE_DEAD;
-        if let Some(pos) = self.alive_slot.remove(&id) {
-            let last = self.alive.len() - 1;
-            if pos != last {
-                let moved = self.alive[last];
-                self.alive[pos] = moved;
-                self.alive_slot.insert(moved, pos);
-            }
-            self.alive.pop();
+        let pos = self.people[id as usize].alive_index as usize;
+        let last = self.alive.len() - 1;
+        if pos != last {
+            let moved = self.alive[last];
+            self.alive[pos] = moved;
+            self.people[moved as usize].alive_index = pos as u32;
         }
+        self.alive.pop();
     }
 
     pub(crate) fn adjust_pop(&mut self, cell: u32, state: u8, delta: i32) {
@@ -368,17 +378,7 @@ impl World {
             self.stats.infected += t.infected as u64;
             self.stats.immune += t.immune as u64;
         }
-        for id in &self.alive {
-            if self.people[*id as usize].state == STATE_INFECTED {
-                let g = self.people[*id as usize].generation.min(3) as usize;
-                self.stats.infected_by_gen[g] += 1;
-            }
-        }
-    }
-
-    pub(crate) fn alive_slot_insert(&mut self, id: u32) {
-        self.alive_slot.insert(id, self.alive.len());
-        self.alive.push(id);
+        self.stats.infected_by_gen = self.infected_by_gen;
     }
 
     pub fn refresh_aggregate_stats(&mut self) {
@@ -386,18 +386,12 @@ impl World {
         self.stats.healthy = 0;
         self.stats.infected = 0;
         self.stats.immune = 0;
-        self.stats.infected_by_gen = [0; 4];
         for t in &self.tiles {
             self.stats.healthy += t.healthy as u64;
             self.stats.infected += t.infected as u64;
             self.stats.immune += t.immune as u64;
         }
-        for id in &self.alive {
-            if self.people[*id as usize].state == STATE_INFECTED {
-                let g = generation_index(self.people[*id as usize].generation);
-                self.stats.infected_by_gen[g] += 1;
-            }
-        }
+        self.stats.infected_by_gen = self.infected_by_gen;
         self.stats.total_virus_deaths = self.total_virus_deaths;
         self.stats.total_natural_deaths = self.total_natural_deaths;
         self.stats.total_births = self.total_births;
