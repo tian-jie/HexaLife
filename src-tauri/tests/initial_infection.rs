@@ -1,4 +1,5 @@
-use hexalife_lib::config::{InfectionMode, SimConfig};
+use hexalife_lib::config::{DensityCenter, InfectionMode, SimConfig};
+use hexalife_lib::world::hex::LINK_NONE;
 use hexalife_lib::world::{STATE_HEALTHY, STATE_INFECTED, World};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
@@ -11,10 +12,16 @@ fn initial_cell_uses_gen0_infection_rate() {
     cfg.height = 30;
     cfg.initial_population = 500;
     cfg.initial_infected_count = 1;
-    cfg.initial_infection_mode = InfectionMode::Random;
+    let hub = 15 * 30 + 15;
+    cfg.centers = vec![DensityCenter {
+        cell: hub,
+        peak: 80.0,
+        sigma: 2.5,
+    }];
+    cfg.initial_infection_mode = InfectionMode::Cell;
+    cfg.initial_infection_cell = hub;
     cfg.infection_rate[0] = 0.7;
     cfg.seed = 99;
-    cfg.centers = vec![];
 
     let mut rng = StdRng::seed_from_u64(cfg.seed);
     let world = World::new(cfg, &mut rng).expect("world");
@@ -30,10 +37,22 @@ fn initial_cell_uses_gen0_infection_rate() {
     }
     assert!(infected_people > 0);
     assert_eq!(infected_by_cell.len(), 1);
-    let cell = *infected_by_cell.keys().next().unwrap();
+    let cell = hub;
     let (h, i, _) = world.cell_counts(cell);
     assert_eq!(i, infected_people);
-    assert!(h > 0, "P_g=0.7 时不应整格全员感染");
+    let mut list_h = 0u32;
+    let mut list_i = 0u32;
+    let mut cur = world.cell_head[cell as usize];
+    while cur != LINK_NONE {
+        match world.people[cur as usize].state {
+            STATE_HEALTHY => list_h += 1,
+            STATE_INFECTED => list_i += 1,
+            _ => {}
+        }
+        cur = world.people[cur as usize].next_in_cell;
+    }
+    assert_eq!((h, i), (list_h, list_i));
+    assert!(list_h > 0, "P_g=0.7 且爆发格内多人时不应整格全员感染");
 }
 
 #[test]
@@ -54,8 +73,9 @@ fn gen0_rate_one_infects_all_in_outbreak_cell_only() {
     let outbreak_cell = world
         .alive
         .iter()
-        .find(|id| world.people[*id as usize].state == STATE_INFECTED)
-        .map(|id| world.people[*id as usize].cell)
+        .copied()
+        .find(|&id| world.people[id as usize].state == STATE_INFECTED)
+        .map(|id| world.people[id as usize].cell)
         .expect("outbreak");
 
     let mut cur = world.cell_head[outbreak_cell as usize];

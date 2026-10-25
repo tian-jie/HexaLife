@@ -15,7 +15,7 @@ pub enum Control {
     Start,
     Pause,
     Resume,
-    Reset,
+    Stop,
     SetSpeed(f32),
     SetCamera(Camera),
     QueryCell {
@@ -79,33 +79,107 @@ impl SharedSim {
     }
 }
 
-fn config_path() -> PathBuf {
-    let mut candidates = Vec::new();
+const ENV_FILE_VAR: &str = "HEXALIFE_ENV";
+const CONFIG_ENV: &str = "HEXALIFE_CONFIG";
+const VIRUS_ENV: &str = "HEXALIFE_VIRUS";
+
+fn search_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
     if let Ok(cwd) = std::env::current_dir() {
-        candidates.push(cwd);
+        roots.push(cwd);
     }
     if let Ok(exe) = std::env::current_exe() {
         if let Some(parent) = exe.parent() {
-            candidates.push(parent.to_path_buf());
+            roots.push(parent.to_path_buf());
         }
     }
-    for mut dir in candidates {
+    roots
+}
+
+fn resolve_relative_config(raw: &str) -> Option<PathBuf> {
+    let rel = PathBuf::from(raw);
+    if rel.is_absolute() {
+        return rel.exists().then_some(rel);
+    }
+    for mut dir in search_roots() {
         for _ in 0..6 {
-            let p = dir.join("config/default.toml");
+            let p = dir.join(&rel);
             if p.exists() {
-                return p;
+                return Some(p);
             }
             if !dir.pop() {
                 break;
             }
         }
     }
-    PathBuf::from("config/default.toml")
+    rel.exists().then_some(rel)
+}
+
+fn virus_config_relative(name: &str) -> Result<&'static str, String> {
+    let trimmed = name.trim();
+    let key = trimmed.to_ascii_lowercase();
+    match key.as_str() {
+        "baseline" | "default" | "基线" => Ok("config/viruses/baseline.toml"),
+        "covid" | "covid-19" | "covid19" | "sars-cov-2" | "新冠" => Ok("config/viruses/covid.toml"),
+        "norovirus" | "noro" | "诺如" => Ok("config/viruses/norovirus.toml"),
+        "bubonic" | "plague" | "black-death" | "blackdeath" | "鼠疫" | "黑死病" | "腺鼠疫" => {
+            Ok("config/viruses/bubonic.toml")
+        }
+        "pneumonic" | "肺鼠疫" => Ok("config/viruses/pneumonic.toml"),
+        _ => Err(format!(
+            "未知病毒 {trimmed}。可用 baseline、covid、norovirus、bubonic、pneumonic，或把 {VIRUS_ENV} 设为病毒配置文件路径"
+        )),
+    }
+}
+
+fn path_from_var(value: &str) -> PathBuf {
+    resolve_relative_config(value).unwrap_or_else(|| PathBuf::from(value))
+}
+
+fn nonempty_var(name: &str) -> Option<String> {
+    std::env::var(name)
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+}
+
+fn resolve_named(rel: &str) -> PathBuf {
+    resolve_relative_config(rel).unwrap_or_else(|| PathBuf::from(rel))
+}
+
+struct ConfigSources {
+    env_file: PathBuf,
+    virus_file: PathBuf,
+}
+
+fn config_sources() -> Result<ConfigSources, String> {
+    let env_file = if let Some(raw) = nonempty_var(ENV_FILE_VAR) {
+        path_from_var(&raw)
+    } else if let Some(raw) = nonempty_var(CONFIG_ENV) {
+        path_from_var(&raw)
+    } else {
+        resolve_named("config/env/1000.toml")
+    };
+    let virus_file = if let Some(raw) = nonempty_var(VIRUS_ENV) {
+        if raw.contains('/') || raw.ends_with(".toml") {
+            path_from_var(&raw)
+        } else {
+            resolve_named(virus_config_relative(&raw)?)
+        }
+    } else {
+        resolve_named("config/viruses/baseline.toml")
+    };
+    Ok(ConfigSources {
+        env_file,
+        virus_file,
+    })
 }
 
 fn try_build_session() -> Result<Session, String> {
-    let path = config_path();
-    let cfg = SimConfig::load_from_file(&path)?;
+    let sources = config_sources()?;
+    eprintln!("HexaLife 环境: {}", sources.env_file.display());
+    eprintln!("HexaLife 病毒: {}", sources.virus_file.display());
+    let cfg = SimConfig::load_layered(&sources.env_file, &sources.virus_file)?;
     let mut rng = StdRng::seed_from_u64(cfg.seed);
     let world = World::new(cfg, &mut rng)?;
     Ok(Session { world, rng })
@@ -125,7 +199,7 @@ fn sim_loop(
 ) {
     let mut running = false;
     let mut session: Option<Session> = None;
-    let mut speed = 10.0f32;
+    let mut speed = 1.0f32;
     let mut refresh_ms = 100u64;
     let mut last_push = Instant::now();
 
@@ -229,6 +303,31 @@ fn begin_world_build(stats_out: &Arc<Mutex<DayStats>>, label: &str) {
     set_status(stats_out, label, None);
 }
 
+fn stop_and_rebuild(
+    session: &mut Option<Session>,
+    running: &mut bool,
+    refresh_ms: &mut u64,
+    stats_out: &Arc<Mutex<DayStats>>,
+    view_out: &Arc<Mutex<Vec<u8>>>,
+    camera: &Arc<Mutex<Camera>>,
+) {
+    let prev_state = if session.is_some() { "paused" } else { "idle" };
+    begin_world_build(stats_out, "generating");
+    match try_build_session() {
+        Ok(sess) => {
+            *refresh_ms = sess.world.cfg.refresh_interval_ms;
+            *session = Some(sess);
+            *running = false;
+            if let Some(s) = session.as_ref() {
+                push_frame(s, stats_out, view_out, camera, "paused", None);
+            }
+        }
+        Err(e) => {
+            set_status(stats_out, prev_state, Some(e));
+        }
+    }
+}
+
 fn handle_idle_cmd(
     cmd: Control,
     session: &mut Option<Session>,
@@ -259,7 +358,6 @@ fn handle_idle_cmd(
             match try_build_session() {
                 Ok(sess) => {
                     *refresh_ms = sess.world.cfg.refresh_interval_ms;
-                    *speed = sess.world.cfg.default_speed;
                     *session = Some(sess);
                     *running = true;
                     if let Some(s) = session.as_ref() {
@@ -271,23 +369,8 @@ fn handle_idle_cmd(
                 }
             }
         }
-        Control::Reset => {
-            let had = session.is_some();
-            begin_world_build(stats_out, "generating");
-            match try_build_session() {
-                Ok(sess) => {
-                    *refresh_ms = sess.world.cfg.refresh_interval_ms;
-                    *speed = sess.world.cfg.default_speed;
-                    *session = Some(sess);
-                    *running = true;
-                    if let Some(s) = session.as_ref() {
-                        push_frame(s, stats_out, view_out, camera, "running", None);
-                    }
-                }
-                Err(e) => {
-                    set_status(stats_out, if had { "paused" } else { "idle" }, Some(e));
-                }
-            }
+        Control::Stop => {
+            stop_and_rebuild(session, running, refresh_ms, stats_out, view_out, camera);
         }
         Control::Pause | Control::Resume => {}
     }
@@ -331,9 +414,9 @@ fn apply_cmd(
                 *cam = c;
             }
         }
-        Control::Start | Control::Reset => {
+        Control::Start => {
             handle_idle_cmd(
-                cmd,
+                Control::Start,
                 session,
                 running,
                 speed,
@@ -342,6 +425,9 @@ fn apply_cmd(
                 view_out,
                 camera,
             );
+        }
+        Control::Stop => {
+            stop_and_rebuild(session, running, refresh_ms, stats_out, view_out, camera);
         }
     }
 }

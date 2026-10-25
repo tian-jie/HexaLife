@@ -9,7 +9,11 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev --release",
-    "tauri:dev:debug": "tauri dev"
+    "tauri:debug": "tauri dev",
+    "tauri:covid": "HEXALIFE_ENV=config/env/1000-mobile.toml HEXALIFE_VIRUS=covid tauri dev --release",
+    "tauri:norovirus": "HEXALIFE_ENV=config/env/1000.toml HEXALIFE_VIRUS=norovirus tauri dev --release",
+    "tauri:bubonic": "HEXALIFE_ENV=config/env/cities.toml HEXALIFE_VIRUS=bubonic tauri dev --release",
+    "tauri:pneumonic": "HEXALIFE_ENV=config/env/cities.toml HEXALIFE_VIRUS=pneumonic tauri dev --release"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

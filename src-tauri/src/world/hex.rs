@@ -59,6 +59,39 @@ pub fn has_cells_at_distance(width: u32, height: u32, q: u32, r: u32, dist: u32)
     false
 }
 
+/// Write ring cells into `out`; returns count (may be less than capacity).
+pub fn ring_cells_into(
+    width: u32,
+    height: u32,
+    q: u32,
+    r: u32,
+    dist: u32,
+    out: &mut [u32],
+) -> usize {
+    if dist == 0 {
+        if !out.is_empty() {
+            out[0] = cell_index(width, q, r);
+            return 1;
+        }
+        return 0;
+    }
+    let d = dist as i32;
+    let mut cq = q as i32 + RING_DQ[4] * d;
+    let mut cr = r as i32 + RING_DR[4] * d;
+    let mut n = 0usize;
+    for side in 0..6 {
+        for _ in 0..d {
+            if in_bounds(width, height, cq, cr) && n < out.len() {
+                out[n] = cell_index(width, cq as u32, cr as u32);
+                n += 1;
+            }
+            cq += RING_DQ[side];
+            cr += RING_DR[side];
+        }
+    }
+    n
+}
+
 pub fn cells_at_distance(width: u32, height: u32, q: u32, r: u32, dist: u32) -> Vec<u32> {
     if dist == 0 {
         return vec![cell_index(width, q, r)];

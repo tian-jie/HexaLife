@@ -207,7 +207,7 @@ loop {
 
 ### 6.3 开始与重置
 
-两者都读取 `config/default.toml`，缺项用代码里的默认值补齐，然后校验。
+开始和重置都先读 `HEXALIFE_ENV` 指向的环境文件，再读 `HEXALIFE_VIRUS` 指向的病毒文件。病毒文件里出现的字段覆盖环境文件。缺项用代码里的默认值补齐，然后校验。
 
 - 开始失败：保持未开始，向前端发送错误文本。
 - 重置失败：不替换 `World`，维持原来的运行或暂停状态，向前端发送错误文本。
@@ -306,7 +306,7 @@ Reset 成功：无论原来是 Running 还是 Paused，都进入新的 Running
 
 ## 11. 配置
 
-文件：`config/default.toml`。只有开始和重置读取它。
+环境文件在 `config/env/`，病毒文件在 `config/viruses/`。只有开始和重置读取，并且每次同时读这两个文件。
 
 ```text
 [map]        width、height
@@ -333,7 +333,8 @@ hexalife/
 │  └─ tauri.conf.json
 ├─ src/
 ├─ config/
-│  └─ default.toml
+│  ├─ env/
+│  └─ viruses/
 ├─ package.json
 └─ README.md
 ```

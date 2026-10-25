@@ -158,18 +158,23 @@ impl SimConfig {
             refresh_interval_ms: 100,
             speed_min: 1.0,
             speed_max: 60.0,
-            default_speed: 10.0,
+            default_speed: 1.0,
             speed_fastest: -1.0,
         }
     }
 
     pub fn load_from_file(path: &Path) -> Result<Self, String> {
-        let text = std::fs::read_to_string(path)
-            .map_err(|e| format!("无法读取配置 {}: {}", path.display(), e))?;
-        let raw: RawConfig = toml::from_str(&text)
-            .map_err(|e| format!("配置 TOML 解析失败: {}", e))?;
         let mut cfg = Self::defaults();
-        cfg.apply_raw(raw);
+        cfg.apply_raw(read_raw(path)?);
+        cfg.validate()?;
+        Ok(cfg)
+    }
+
+    /// 先读环境文件，再用病毒文件覆盖其中出现的字段。
+    pub fn load_layered(env_file: &Path, virus_file: &Path) -> Result<Self, String> {
+        let mut cfg = Self::defaults();
+        cfg.apply_raw(read_raw(env_file)?);
+        cfg.apply_raw(read_raw(virus_file)?);
         cfg.validate()?;
         Ok(cfg)
     }
@@ -506,4 +511,43 @@ fn default_movement() -> [MoveProfile; 3] {
     ]
 }
 
+fn read_raw(path: &Path) -> Result<RawConfig, String> {
+    let text = std::fs::read_to_string(path)
+        .map_err(|e| format!("无法读取配置 {}: {}", path.display(), e))?;
+    toml::from_str(&text).map_err(|e| format!("配置 TOML 解析失败 {}: {}", path.display(), e))
+}
+
 use crate::world::hex;
+
+#[cfg(test)]
+mod tests {
+    use super::SimConfig;
+    use std::path::PathBuf;
+
+    #[test]
+    fn virus_presets_load_over_environment() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config");
+        let env = root.join("env/1000.toml");
+        let cities = root.join("env/cities.toml");
+        for name in [
+            "baseline.toml",
+            "covid.toml",
+            "norovirus.toml",
+            "bubonic.toml",
+            "pneumonic.toml",
+        ] {
+            let virus = root.join("viruses").join(name);
+            let cfg = SimConfig::load_layered(&env, &virus).unwrap_or_else(|e| panic!("{name}: {e}"));
+            assert_eq!(cfg.width, 1000, "{name}");
+            assert_eq!(cfg.initial_population, 10_000_000, "{name}");
+        }
+        let covid = SimConfig::load_layered(&env, &root.join("viruses/covid.toml")).unwrap();
+        assert_eq!(covid.incubation_days, 8);
+        assert!((covid.infection_rate[0] - 0.15).abs() < 1e-9);
+        assert_eq!(covid.initial_infection_cell, 500500);
+        let bub = SimConfig::load_layered(&cities, &root.join("viruses/bubonic.toml")).unwrap();
+        assert!((bub.lambda_bg - 0.02).abs() < 1e-9);
+        assert!((bub.lethality_rate[0] - 0.50).abs() < 1e-9);
+        assert!((bub.movement[2].probability - 0.001).abs() < 1e-9);
+    }
+}

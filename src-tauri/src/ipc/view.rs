@@ -43,13 +43,7 @@ fn hsv_to_rgb(h: f64, s: f64, v: f64) -> (u8, u8, u8) {
     )
 }
 
-fn sum_tiles_in_rect(
-    world: &World,
-    q0: i32,
-    r0: i32,
-    q1: i32,
-    r1: i32,
-) -> (u32, u32) {
+fn sum_tiles_in_rect(world: &World, q0: i32, r0: i32, q1: i32, r1: i32) -> (u32, u32) {
     let mut total = 0u32;
     let mut infected = 0u32;
     if q1 < q0 || r1 < r0 {
@@ -71,7 +65,7 @@ fn sum_tiles_in_rect(
     (total, infected)
 }
 
-fn sum_cells_in_rect(world: &World, q0: i32, r0: i32, span: u32) -> (u32, u32) {
+fn sum_cell_pop_in_rect(world: &World, q0: i32, r0: i32, span: u32) -> (u32, u32) {
     let mut total = 0u32;
     let mut infected = 0u32;
     for dr in 0..span {
@@ -81,10 +75,10 @@ fn sum_cells_in_rect(world: &World, q0: i32, r0: i32, span: u32) -> (u32, u32) {
             if !crate::world::hex::in_bounds(world.cfg.width, world.cfg.height, q, r) {
                 continue;
             }
-            let cell = crate::world::hex::cell_index(world.cfg.width, q as u32, r as u32);
-            let (h, i, m) = world.cell_counts(cell);
-            total += h + i + m;
-            infected += i;
+            let idx = crate::world::hex::cell_index(world.cfg.width, q as u32, r as u32) as usize;
+            let p = &world.cell_pop[idx];
+            total += p.healthy + p.infected + p.immune;
+            infected += p.infected;
         }
     }
     (total, infected)
@@ -99,7 +93,7 @@ pub fn render_view(world: &World, camera: Camera, out_w: u16, out_h: u16) -> Vec
     let pixels = &mut buf[4..];
     let cpp = camera.cells_per_pixel.max(0.25);
     let c_bright = world.cfg.c_bright;
-    let use_tile_blocks = cpp >= TILE_SIZE as f64;
+    let use_tiles = cpp >= TILE_SIZE as f64;
 
     for py in 0..h {
         for px in 0..w {
@@ -111,13 +105,10 @@ pub fn render_view(world: &World, camera: Camera, out_w: u16, out_h: u16) -> Vec
             let q1 = q0 + span as i32 - 1;
             let r1 = r0 + span as i32 - 1;
 
-            let (total, infected) = if use_tile_blocks {
+            let (total, infected) = if use_tiles {
                 sum_tiles_in_rect(world, q0, r0, q1, r1)
-            } else if span <= 1 {
-                let (t, i) = sum_cells_in_rect(world, q0, r0, 1);
-                (t, i)
             } else {
-                sum_cells_in_rect(world, q0, r0, span)
+                sum_cell_pop_in_rect(world, q0, r0, span)
             };
 
             let rgba = cell_rgba(total, infected, c_bright);

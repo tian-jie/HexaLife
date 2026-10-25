@@ -1,7 +1,9 @@
 pub mod hex;
+pub mod move_tables;
 pub mod populate;
 
 use crate::config::{InfectionMode, SimConfig};
+use crate::world::move_tables::MoveTables;
 use crate::stats::DayStats;
 use crate::world::hex::LINK_NONE;
 use crate::world::populate::PopulationPlanner;
@@ -35,6 +37,13 @@ pub struct TileCounts {
     pub immune: u32,
 }
 
+#[derive(Clone, Copy, Default)]
+pub struct CellPop {
+    pub healthy: u32,
+    pub infected: u32,
+    pub immune: u32,
+}
+
 pub struct World {
     pub cfg: SimConfig,
     pub day: u32,
@@ -43,6 +52,7 @@ pub struct World {
     /// id -> index in `alive` for O(1) removal
     alive_slot: HashMap<u32, usize>,
     pub cell_head: Vec<u32>,
+    pub cell_pop: Vec<CellPop>,
     pub tiles: Vec<TileCounts>,
     pub tiles_w: u32,
     pub tiles_h: u32,
@@ -53,6 +63,8 @@ pub struct World {
     pub total_virus_deaths: u64,
     pub total_natural_deaths: u64,
     pub total_births: u64,
+    pub move_tables: MoveTables,
+    pub day_sorted: Vec<u32>,
 }
 
 impl World {
@@ -61,6 +73,7 @@ impl World {
         let tiles_w = (cfg.width + TILE_SIZE - 1) / TILE_SIZE;
         let tiles_h = (cfg.height + TILE_SIZE - 1) / TILE_SIZE;
         let immune_buckets = cfg.max_days as usize + cfg.immune_days as usize + 32;
+        let move_tables = MoveTables::from_config(cfg.width, cfg.height, &cfg.movement);
         let mut world = World {
             cfg,
             day: 0,
@@ -68,6 +81,7 @@ impl World {
             alive: Vec::new(),
             alive_slot: HashMap::new(),
             cell_head: vec![LINK_NONE; cell_count as usize],
+            cell_pop: vec![CellPop::default(); cell_count as usize],
             tiles: vec![
                 TileCounts {
                     healthy: 0,
@@ -85,6 +99,8 @@ impl World {
             total_virus_deaths: 0,
             total_natural_deaths: 0,
             total_births: 0,
+            move_tables,
+            day_sorted: Vec::new(),
         };
         world.populate(rng)?;
         world.place_initial_infections(rng)?;
@@ -214,25 +230,25 @@ impl World {
     fn infect_initial(&mut self, id: u32) {
         let cell = self.people[id as usize].cell;
         let prev = self.people[id as usize].state;
-        self.adjust_tile(cell, prev, -1);
+        self.adjust_pop(cell, prev, -1);
         let p = &mut self.people[id as usize];
         p.state = STATE_INFECTED;
         p.infected_on = 0;
         p.generation = 0;
-        self.adjust_tile(cell, STATE_INFECTED, 1);
+        self.adjust_pop(cell, STATE_INFECTED, 1);
     }
 
     pub fn infect_new(&mut self, id: u32, day: u32, parent_gen: u8) {
         let cell = self.people[id as usize].cell;
         let prev = self.people[id as usize].state;
-        self.adjust_tile(cell, prev, -1);
+        self.adjust_pop(cell, prev, -1);
         let ng = parent_gen.saturating_add(1);
         let generation = if ng >= 3 { 3 } else { ng };
         let p = &mut self.people[id as usize];
         p.state = STATE_INFECTED;
         p.infected_on = day;
         p.generation = generation;
-        self.adjust_tile(cell, STATE_INFECTED, 1);
+        self.adjust_pop(cell, STATE_INFECTED, 1);
         self.stats.new_infections += 1;
     }
 
@@ -245,13 +261,13 @@ impl World {
             self.people[head as usize].prev_in_cell = id;
         }
         self.cell_head[cell as usize] = id;
-        self.adjust_tile(cell, STATE_HEALTHY, 1);
+        self.adjust_pop(cell, STATE_HEALTHY, 1);
     }
 
     fn remove_from_cell(&mut self, id: u32) {
         let cell = self.people[id as usize].cell;
         let state = self.people[id as usize].state;
-        self.adjust_tile(cell, state, -1);
+        self.adjust_pop(cell, state, -1);
         let prev = self.people[id as usize].prev_in_cell;
         let next = self.people[id as usize].next_in_cell;
         if prev == LINK_NONE {
@@ -276,7 +292,11 @@ impl World {
             self.people[head as usize].prev_in_cell = id;
         }
         self.cell_head[new_cell as usize] = id;
-        self.adjust_tile(new_cell, state, 1);
+        self.adjust_pop(new_cell, state, 1);
+    }
+
+    pub fn is_alive(&self, id: u32) -> bool {
+        self.alive_slot.contains_key(&id)
     }
 
     pub fn move_person(&mut self, id: u32, new_cell: u32) {
@@ -301,7 +321,14 @@ impl World {
         }
     }
 
-    pub(crate) fn adjust_tile(&mut self, cell: u32, state: u8, delta: i32) {
+    pub(crate) fn adjust_pop(&mut self, cell: u32, state: u8, delta: i32) {
+        let pop = &mut self.cell_pop[cell as usize];
+        match state {
+            STATE_HEALTHY => pop.healthy = (pop.healthy as i32 + delta).max(0) as u32,
+            STATE_INFECTED => pop.infected = (pop.infected as i32 + delta).max(0) as u32,
+            STATE_IMMUNE => pop.immune = (pop.immune as i32 + delta).max(0) as u32,
+            _ => {}
+        }
         let (q, r) = hex::qr_from_index(self.cfg.width, cell);
         let (tx, ty) = hex::tile_coords(TILE_SIZE, q, r);
         let idx = (ty * self.tiles_w + tx) as usize;
@@ -328,20 +355,8 @@ impl World {
     }
 
     pub fn cell_counts(&self, cell: u32) -> (u32, u32, u32) {
-        let mut h = 0u32;
-        let mut i = 0u32;
-        let mut m = 0u32;
-        let mut cur = self.cell_head[cell as usize];
-        while cur != LINK_NONE {
-            match self.people[cur as usize].state {
-                STATE_HEALTHY => h += 1,
-                STATE_INFECTED => i += 1,
-                STATE_IMMUNE => m += 1,
-                _ => {}
-            }
-            cur = self.people[cur as usize].next_in_cell;
-        }
-        (h, i, m)
+        let p = &self.cell_pop[cell as usize];
+        (p.healthy, p.infected, p.immune)
     }
 
     fn rebuild_day_zero_stats(&mut self) {
@@ -364,12 +379,6 @@ impl World {
     pub(crate) fn alive_slot_insert(&mut self, id: u32) {
         self.alive_slot.insert(id, self.alive.len());
         self.alive.push(id);
-    }
-
-    pub fn sorted_alive_snapshot(&self) -> Vec<u32> {
-        let mut ids = self.alive.clone();
-        ids.sort_unstable();
-        ids
     }
 
     pub fn refresh_aggregate_stats(&mut self) {

@@ -1,0 +1,61 @@
+# 环境：1000×1000，1000 万人。不含病毒参数。
+# 格子编号 index = r * width + q。500500 是中心城市（q=500, r=500）。
+
+[map]
+width = 1000
+height = 1000
+
+[sim]
+max_days = 10000
+
+[initial]
+seed = 1
+initial_population = 10_000_000
+initial_infected_count = 1
+initial_infection_mode = "random"
+initial_infection_cell = 500500
+
+[density]
+lambda_bg = 0.2
+truncation = 4.0
+centers = [
+  { cell = 250250, peak = 4.0, sigma = 20.0 },
+  { cell = 250750, peak = 4.0, sigma = 20.0 },
+  { cell = 500500, peak = 4.0, sigma = 20.0 },
+  { cell = 750250, peak = 4.0, sigma = 20.0 },
+  { cell = 750750, peak = 4.0, sigma = 20.0 },
+  { cell = 200500, peak = 4.0, sigma = 20.0 },
+]
+
+[vital]
+birth_rate_per_day = 0.0001
+natural_death_rate_per_day = 0.00005
+
+[movement.commute]
+probability = 0.30
+distance_min = 1
+distance_max = 5
+tau = 1.0
+beta = 1.0
+
+[movement.visit]
+probability = 0.007142857142857143
+distance_min = 6
+distance_max = 50
+tau = 10.0
+beta = 0.1
+
+[movement.travel]
+probability = 0.0000273972602739726
+distance_min = 51
+distance_max = 100
+tau = 80.0
+beta = 0.0
+
+[ui]
+c_bright = 64
+refresh_interval_ms = 100
+speed_min = 1.0
+speed_max = 60.0
+default_speed = 1.0
+speed_fastest = -1.0

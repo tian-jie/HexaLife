@@ -1,0 +1,28 @@
+# 环境：200×200，5 万人，用来快速试跑。
+
+[map]
+width = 200
+height = 200
+
+[sim]
+max_days = 500
+
+[initial]
+seed = 1
+initial_population = 50000
+initial_infected_count = 3
+initial_infection_mode = "random"
+initial_infection_cell = 20000
+
+[density]
+lambda_bg = 0.2
+truncation = 4.0
+centers = [{ cell = 20000, peak = 4.0, sigma = 20.0 }]
+
+[vital]
+birth_rate_per_day = 0.0001
+natural_death_rate_per_day = 0.00005
+
+[ui]
+default_speed = 30.0
+refresh_interval_ms = 50

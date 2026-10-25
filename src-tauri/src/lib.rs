@@ -31,8 +31,8 @@ fn resume(app: State<'_, Mutex<AppState>>) {
 }
 
 #[tauri::command]
-fn reset(app: State<'_, Mutex<AppState>>) {
-    let _ = app.lock().unwrap().sim.tx.send(Control::Reset);
+fn stop(app: State<'_, Mutex<AppState>>) {
+    let _ = app.lock().unwrap().sim.tx.send(Control::Stop);
 }
 
 #[tauri::command]
@@ -81,7 +81,7 @@ pub fn run() {
             start,
             pause,
             resume,
-            reset,
+            stop,
             set_speed,
             set_camera,
             get_stats,

@@ -1,0 +1,13 @@
+# 病毒：肺鼠疫。人传人强，发病 3 天，致死率 90%，发病者不移动。
+# 从环境文件指定的城市格子开始。
+
+[initial]
+initial_infected_count = 1
+initial_infection_mode = "cell"
+
+[disease]
+incubation_days = 3
+immune_days = 10000
+infection_rate = [0.40, 0.40, 0.40, 0.40]
+lethality_rate = [0.90, 0.90, 0.90, 0.90]
+infected_can_move = false
