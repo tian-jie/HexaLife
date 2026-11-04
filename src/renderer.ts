@@ -59,6 +59,16 @@ export class MapRenderer {
     ctx.putImageData(image, 0, 0);
   }
 
+  syncFromStats(stats: Record<string, unknown>) {
+    const w = Number(stats.map_width ?? 0);
+    if (w < 1) return;
+    this.camera = {
+      center_q: Number(stats.camera_center_q),
+      center_r: Number(stats.camera_center_r),
+      cells_per_pixel: Number(stats.camera_cells_per_pixel),
+    };
+  }
+
   cellAtPixel(px: number, py: number): { q: number; r: number } | null {
     const q = Math.floor(this.camera.center_q + (px - this.viewW / 2) * this.camera.cells_per_pixel);
     const r = Math.floor(this.camera.center_r + (py - this.viewH / 2) * this.camera.cells_per_pixel);

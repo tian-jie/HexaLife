@@ -71,6 +71,14 @@ main {
   vertical-align: middle;
 }
 
+.swatch.uninhabitable {
+  background: #0c1c38;
+}
+
+.swatch.habitable-empty {
+  background: #464e30;
+}
+
 .swatch.black {
   background: #000;
   border: 1px solid #444;

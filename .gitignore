@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+assets/wsf2019/
+assets/masks/wsf2019-100000x100000.bin
