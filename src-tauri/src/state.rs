@@ -1,5 +1,5 @@
 use crate::config::SimConfig;
-use crate::ipc::view::Camera;
+use crate::ipc::view::{default_camera_for_map, Camera};
 use crate::sim::tick::tick_day;
 use crate::stats::DayStats;
 use crate::world::World;
@@ -21,7 +21,7 @@ pub enum Control {
     QueryCell {
         q: u32,
         r: u32,
-        reply: std::sync::mpsc::Sender<(u32, u32, u32)>,
+        reply: std::sync::mpsc::Sender<(u32, u32, u32, bool)>,
     },
     Shutdown,
 }
@@ -42,11 +42,7 @@ impl SharedSim {
         let (tx, rx) = crossbeam_channel::unbounded();
         let latest_stats = Arc::new(Mutex::new(DayStats::zeroed()));
         let latest_view = Arc::new(Mutex::new(Vec::new()));
-        let camera = Arc::new(Mutex::new(Camera {
-            center_q: 500.0,
-            center_r: 500.0,
-            cells_per_pixel: 2.0,
-        }));
+        let camera = Arc::new(Mutex::new(default_camera_for_map(1000, 1000)));
         let stats_clone = latest_stats.clone();
         let view_clone = latest_view.clone();
         let camera_clone = camera.clone();
@@ -59,7 +55,7 @@ impl SharedSim {
         }
     }
 
-    pub fn query_cell(&self, q: u32, r: u32) -> (u32, u32, u32) {
+    pub fn query_cell(&self, q: u32, r: u32) -> (u32, u32, u32, bool) {
         let (reply_tx, reply_rx) = std::sync::mpsc::channel();
         if self
             .tx
@@ -70,11 +66,11 @@ impl SharedSim {
             })
             .is_err()
         {
-            return (0, 0, 0);
+            return (0, 0, 0, false);
         }
         reply_rx
             .recv_timeout(Duration::from_millis(30))
-            .unwrap_or((0, 0, 0))
+            .unwrap_or((0, 0, 0, false))
     }
 }
 
@@ -343,7 +339,7 @@ fn handle_idle_cmd(
             let counts = session
                 .as_ref()
                 .map(|s| cell_counts_at(&s.world, q, r))
-                .unwrap_or((0, 0, 0));
+                .unwrap_or((0, 0, 0, false));
             let _ = reply.send(counts);
         }
         Control::SetSpeed(s) => *speed = s,
@@ -357,6 +353,10 @@ fn handle_idle_cmd(
             match try_build_session() {
                 Ok(sess) => {
                     *refresh_ms = sess.world.cfg.refresh_interval_ms;
+                    let cam = default_camera_for_map(sess.world.cfg.width, sess.world.cfg.height);
+                    if let Ok(mut c) = camera.lock() {
+                        *c = cam;
+                    }
                     *session = Some(sess);
                     *running = true;
                     if let Some(s) = session.as_ref() {
@@ -391,7 +391,7 @@ fn apply_cmd(
             let counts = session
                 .as_ref()
                 .map(|s| cell_counts_at(&s.world, q, r))
-                .unwrap_or((0, 0, 0));
+                .unwrap_or((0, 0, 0, false));
             let _ = reply.send(counts);
         }
         Control::Pause => {
@@ -431,12 +431,13 @@ fn apply_cmd(
     }
 }
 
-fn cell_counts_at(world: &World, q: u32, r: u32) -> (u32, u32, u32) {
+fn cell_counts_at(world: &World, q: u32, r: u32) -> (u32, u32, u32, bool) {
     if !crate::world::hex::in_bounds(world.cfg.width, world.cfg.height, q as i32, r as i32) {
-        return (0, 0, 0);
+        return (0, 0, 0, false);
     }
     let cell = crate::world::hex::cell_index(world.cfg.width, q, r);
-    world.cell_counts(cell)
+    let (h, i, m) = world.cell_counts(cell);
+    (h, i, m, world.habit.is_habitable(cell))
 }
 
 fn push_stats_light(
@@ -468,5 +469,10 @@ fn push_frame(
     if sess.world.day == 0 && st.alive == 0 {
         st.alive = sess.world.alive.len() as u64;
     }
+    st.map_width = sess.world.cfg.width;
+    st.map_height = sess.world.cfg.height;
+    st.camera_center_q = cam.center_q;
+    st.camera_center_r = cam.center_r;
+    st.camera_cells_per_pixel = cam.cells_per_pixel;
     *stats_out.lock().unwrap() = st;
 }

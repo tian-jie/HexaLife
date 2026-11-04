@@ -34,6 +34,9 @@ npm run tauri:pneumonic
 | 环境文件 | 规模 |
 |---|---|
 | `config/env/1000.toml` | 1000×1000，1000 万人 |
+| `config/env/world-1000.toml` | 1000×1000 世界地图（WSF2019 宜居掩码） |
+| `config/env/world-10000.toml` | 10000×10000 世界地图（均匀人口 + GeoTIFF 掩码） |
+| `config/env/10000-world.toml` | 同 `10000.toml` 城市密度 + `wsf2019-10000x10000.bin` |
 | `config/env/1000-mobile.toml` | 同上，城市更集中，远行更多 |
 | `config/env/cities.toml` | 1000×1000，人口集中在城市 |
 | `config/env/dev-small.toml` | 200×200，5 万人 |
@@ -46,6 +49,29 @@ npm run tauri:pneumonic
 | `norovirus` | `config/viruses/norovirus.toml` |
 | `bubonic` | `config/viruses/bubonic.toml` |
 | `pneumonic` | `config/viruses/pneumonic.toml` |
+
+## WSF2019 宜居掩码（世界地图）
+
+高精度掩码从 DLR 全分辨率 GeoTIFF 瓦片生成（非 512px 缩略图）。需 Python 依赖：
+
+```bash
+pip install -r tools/requirements-wsf.txt
+```
+
+生成 `1000×1000`、`10000×10000`、`100000×100000` 三档（约数小时，100k 掩码约 1.25 GiB，已 gitignore）：
+
+```bash
+npm run build:wsf-masks
+```
+
+单档示例：
+
+```bash
+python3 tools/build_wsf_mask.py --source tif --width 1000 --height 1000 \
+  --out assets/masks/wsf2019-1000x1000.bin
+```
+
+瓦片缓存：`assets/wsf2019/tiles/`（已忽略）。快速预览可用 `--source thumbnail`。
 
 ## 测试
 

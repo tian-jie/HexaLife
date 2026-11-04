@@ -19,6 +19,11 @@ pub struct DayStats {
     pub infected_by_gen: [u64; 4],
     pub run_state: String,
     pub error: Option<String>,
+    pub map_width: u32,
+    pub map_height: u32,
+    pub camera_center_q: f64,
+    pub camera_center_r: f64,
+    pub camera_cells_per_pixel: f64,
 }
 
 impl DayStats {

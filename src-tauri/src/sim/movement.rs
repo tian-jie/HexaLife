@@ -114,10 +114,15 @@ fn pick_weighted_cell(
     }
     let mut cells: Vec<(u32, f64)> = Vec::with_capacity(candidates.len());
     for &c in candidates {
+        if !world.habit.is_habitable(c) {
+            continue;
+        }
         let (cq, cr) = hex::qr_from_index(world.cfg.width, c);
         let dist_home = hex::hex_distance(cq, cr, hq, hr);
         let w = home_weight_at(lut, dist_home);
-        cells.push((c, w));
+        if w > 0.0 {
+            cells.push((c, w));
+        }
     }
     cells.sort_unstable_by_key(|(c, _)| *c);
     let sum: f64 = cells.iter().map(|(_, w)| *w).sum();
@@ -134,4 +139,53 @@ fn pick_weighted_cell(
         }
     }
     cells.last().map(|(c, _)| *c).unwrap_or(LINK_NONE)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::SimConfig;
+    use rand::SeedableRng;
+    use rand::rngs::StdRng;
+    use std::io::Write;
+
+    fn write_mask_3x1_middle(path: &std::path::Path) {
+        let bits = [0b00000010u8];
+        let mut f = std::fs::File::create(path).unwrap();
+        f.write_all(b"HLHB").unwrap();
+        f.write_all(&3u32.to_le_bytes()).unwrap();
+        f.write_all(&1u32.to_le_bytes()).unwrap();
+        f.write_all(&bits).unwrap();
+    }
+
+    #[test]
+    fn move_stays_when_only_neighbors_uninhabitable() {
+        let dir = std::env::temp_dir().join("hexalife_move_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let mask_path = dir.join("move.bin");
+        write_mask_3x1_middle(&mask_path);
+
+        let mut cfg = SimConfig::defaults();
+        cfg.width = 3;
+        cfg.height = 1;
+        cfg.initial_population = 1;
+        cfg.initial_infected_count = 0;
+        cfg.lambda_bg = 1.0;
+        cfg.centers = vec![];
+        cfg.habitability = Some(mask_path.to_string_lossy().into_owned());
+        cfg.movement[0].probability = 1.0;
+        cfg.movement[0].distance_min = 1;
+        cfg.movement[0].distance_max = 1;
+        cfg.movement[1].probability = 0.0;
+        cfg.movement[2].probability = 0.0;
+
+        let mut rng = StdRng::seed_from_u64(7);
+        let world = World::new(cfg, &mut rng).expect("world");
+        assert_eq!(world.alive.len(), 1);
+        let id = world.alive[0];
+        assert_eq!(world.people[id as usize].cell, 1);
+
+        let dests = decide_moves(&world, 1, world.alive.len());
+        assert_eq!(dests[0], LINK_NONE);
+    }
 }

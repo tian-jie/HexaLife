@@ -1,3 +1,4 @@
+pub mod habit;
 pub mod hex;
 pub mod move_tables;
 pub mod populate;
@@ -6,6 +7,7 @@ use crate::config::{InfectionMode, SimConfig};
 use crate::world::move_tables::MoveTables;
 use crate::stats::DayStats;
 use crate::world::hex::LINK_NONE;
+use crate::world::habit::HabitMask;
 use crate::world::populate::PopulationPlanner;
 use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
@@ -36,6 +38,7 @@ pub struct TileCounts {
     pub healthy: u32,
     pub infected: u32,
     pub immune: u32,
+    pub habitable_cells: u32,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -47,6 +50,7 @@ pub struct CellPop {
 
 pub struct World {
     pub cfg: SimConfig,
+    pub habit: HabitMask,
     pub day: u32,
     pub people: Vec<Person>,
     pub alive: Vec<u32>,
@@ -73,22 +77,41 @@ impl World {
         let tiles_h = (cfg.height + TILE_SIZE - 1) / TILE_SIZE;
         let immune_buckets = cfg.max_days as usize + cfg.immune_days as usize + 32;
         let move_tables = MoveTables::from_config(cfg.width, cfg.height, &cfg.movement);
+        let habit = match &cfg.habitability {
+            Some(path) => HabitMask::load(std::path::Path::new(path), cfg.width, cfg.height)?,
+            None => HabitMask::all(cfg.width, cfg.height),
+        };
+        let mut tiles = vec![
+            TileCounts {
+                healthy: 0,
+                infected: 0,
+                immune: 0,
+                habitable_cells: 0,
+            };
+            (tiles_w * tiles_h) as usize
+        ];
+        for index in 0..cell_count {
+            if habit.is_habitable(index) {
+                let (q, r) = hex::qr_from_index(cfg.width, index);
+                let (tx, ty) = hex::tile_coords(TILE_SIZE, q, r);
+                let ti = (ty * tiles_w + tx) as usize;
+                tiles[ti].habitable_cells += 1;
+            }
+        }
+        let planner = PopulationPlanner::new(&cfg, &habit);
+        if planner.total_weight() <= 0.0 {
+            return Err("没有宜居格子，无法放置人口".into());
+        }
         let mut world = World {
             cfg,
+            habit,
             day: 0,
             people: Vec::new(),
             alive: Vec::new(),
             infected_by_gen: [0; 4],
             cell_head: vec![LINK_NONE; cell_count as usize],
             cell_pop: vec![CellPop::default(); cell_count as usize],
-            tiles: vec![
-                TileCounts {
-                    healthy: 0,
-                    infected: 0,
-                    immune: 0,
-                };
-                (tiles_w * tiles_h) as usize
-            ],
+            tiles,
             tiles_w,
             tiles_h,
             active_infected: Vec::new(),
@@ -100,15 +123,14 @@ impl World {
             total_births: 0,
             move_tables,
         };
-        world.populate(rng)?;
+        world.populate(rng, &planner)?;
         world.place_initial_infections(rng)?;
         world.rebuild_day_zero_stats();
         Ok(world)
     }
 
-    fn populate(&mut self, rng: &mut StdRng) -> Result<(), String> {
+    fn populate(&mut self, rng: &mut StdRng, planner: &PopulationPlanner) -> Result<(), String> {
         let n = self.cfg.initial_population as usize;
-        let planner = PopulationPlanner::new(&self.cfg);
         self.people.reserve(n);
         self.alive.reserve(n);
         for id in 0..n {
@@ -401,4 +423,37 @@ impl World {
 
 pub fn generation_index(gen: u8) -> usize {
     gen.min(3) as usize
+}
+
+#[cfg(test)]
+mod world_habit_tests {
+    use super::*;
+    use rand::SeedableRng;
+    use std::io::Write;
+
+    #[test]
+    fn world_fails_when_no_habitable_cells() {
+        let dir = std::env::temp_dir().join("hexalife_world_empty");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("empty.bin");
+        let mut f = std::fs::File::create(&path).unwrap();
+        f.write_all(b"HLHB").unwrap();
+        f.write_all(&4u32.to_le_bytes()).unwrap();
+        f.write_all(&1u32.to_le_bytes()).unwrap();
+        f.write_all(&[0u8]).unwrap();
+
+        let mut cfg = SimConfig::defaults();
+        cfg.width = 4;
+        cfg.height = 1;
+        cfg.initial_population = 10;
+        cfg.lambda_bg = 1.0;
+        cfg.centers = vec![];
+        cfg.habitability = Some(path.to_string_lossy().into_owned());
+
+        let mut rng = StdRng::seed_from_u64(1);
+        match World::new(cfg, &mut rng) {
+            Ok(_) => panic!("expected failure"),
+            Err(err) => assert!(err.contains("没有宜居格子")),
+        }
+    }
 }

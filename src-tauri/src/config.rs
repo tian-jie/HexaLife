@@ -17,6 +17,7 @@ pub struct RawConfig {
 pub struct MapSection {
     pub width: Option<u32>,
     pub height: Option<u32>,
+    pub habitability: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -92,6 +93,7 @@ pub struct UiSection {
 pub struct SimConfig {
     pub width: u32,
     pub height: u32,
+    pub habitability: Option<String>,
     pub max_days: u32,
     pub seed: u64,
     pub initial_population: u64,
@@ -137,6 +139,7 @@ impl SimConfig {
         Self {
             width: 10_000,
             height: 10_000,
+            habitability: None,
             max_days: 10_000,
             seed: 1,
             initial_population: 100_000_000,
@@ -186,6 +189,9 @@ impl SimConfig {
             }
             if let Some(h) = m.height {
                 self.height = h;
+            }
+            if let Some(h) = m.habitability {
+                self.habitability = Some(h);
             }
         }
         if let Some(s) = raw.sim {

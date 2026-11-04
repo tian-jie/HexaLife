@@ -13,6 +13,7 @@ let lastStats: Record<string, unknown> = { run_state: "idle" };
 
 async function refreshStats() {
   lastStats = await invoke<Record<string, unknown>>("get_stats");
+  renderer.syncFromStats(lastStats);
   setupStatsPanel(lastStats);
   setupControls(lastStats);
   viewDirty = true;
@@ -43,11 +44,14 @@ canvas.addEventListener("mousemove", (ev) => {
         tip.textContent = "";
         return;
       }
-      const counts = await invoke<{ healthy: number; infected: number; immune: number }>(
-        "query_cell",
-        { q: info.q, r: info.r },
-      );
-      tip.textContent = `(${info.q}, ${info.r}) 健康 ${counts.healthy} · 感染 ${counts.infected} · 免疫 ${counts.immune}`;
+      const counts = await invoke<{
+        healthy: number;
+        infected: number;
+        immune: number;
+        habitable: boolean;
+      }>("query_cell", { q: info.q, r: info.r });
+      const habitLabel = counts.habitable ? "宜居" : "不宜居";
+      tip.textContent = `(${info.q}, ${info.r}) ${habitLabel} · 健康 ${counts.healthy} · 感染 ${counts.infected} · 免疫 ${counts.immune}`;
     })();
   }, 80);
 });

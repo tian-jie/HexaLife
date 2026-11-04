@@ -13,7 +13,10 @@
     "tauri:covid": "HEXALIFE_ENV=config/env/1000-mobile.toml HEXALIFE_VIRUS=covid tauri dev --release",
     "tauri:norovirus": "HEXALIFE_ENV=config/env/1000.toml HEXALIFE_VIRUS=norovirus tauri dev --release",
     "tauri:bubonic": "HEXALIFE_ENV=config/env/cities.toml HEXALIFE_VIRUS=bubonic tauri dev --release",
-    "tauri:pneumonic": "HEXALIFE_ENV=config/env/cities.toml HEXALIFE_VIRUS=pneumonic tauri dev --release"
+    "tauri:pneumonic": "HEXALIFE_ENV=config/env/cities.toml HEXALIFE_VIRUS=pneumonic tauri dev --release",
+    "tauri:world": "HEXALIFE_ENV=config/env/10000-world.toml HEXALIFE_VIRUS=baseline tauri dev --release",
+    "build:wsf-masks": "python3 tools/build_wsf_mask.py --preset-all-tif --workers 4",
+    "build:wsf-mask": "python3 tools/build_wsf_mask.py --source tif"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

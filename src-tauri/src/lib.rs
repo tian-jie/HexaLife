@@ -61,15 +61,17 @@ struct CellCounts {
     healthy: u32,
     infected: u32,
     immune: u32,
+    habitable: bool,
 }
 
 #[tauri::command]
 fn query_cell(q: u32, r: u32, app: State<'_, Mutex<AppState>>) -> CellCounts {
-    let (h, i, m) = app.lock().unwrap().sim.query_cell(q, r);
+    let (h, i, m, habitable) = app.lock().unwrap().sim.query_cell(q, r);
     CellCounts {
         healthy: h,
         infected: i,
         immune: m,
+        habitable,
     }
 }
 
